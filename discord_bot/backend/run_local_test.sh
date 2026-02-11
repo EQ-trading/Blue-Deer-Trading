@@ -1,8 +1,8 @@
 #!/bin/bash
 
 export LOCAL_TEST=true
-export DISCORD_TOKEN=MTA3OTg5NzQzNjYzMTM1MTMyNg.GlUV3x.TqAgx4zkYzFAlCph0CVOuqPbjQjqe2s0SAJUZk
-export TEST_TOKEN=MTA3OTg5NzQzNjYzMTM1MTMyNg.GlUV3x.TqAgx4zkYzFAlCph0CVOuqPbjQjqe2s0SAJUZk
+export DISCORD_TOKEN=MTA3OTg5NzQzNjYzMTM1MTMyNg.Gg1pFG.KMvaVS2lB_ckad7kiY-HZjfTtemFTbwC4GiR6s
+export TEST_TOKEN=MTA3OTg5NzQzNjYzMTM1MTMyNg.Gg1pFG.KMvaVS2lB_ckad7kiY-HZjfTtemFTbwC4GiR6s
 
 # Change to the directory containing the app
 cd "$(dirname "$0")"

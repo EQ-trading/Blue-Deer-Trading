@@ -1,0 +1,67 @@
+# Discord Bot Render Configuration
+#
+# This file configures the Discord bot deployment on Render.
+#
+# USAGE:
+# 1. Push your code to GitHub
+# 2. Go to render.com and create an account
+# 3. Click New → Blueprint
+# 4. Connect your GitHub repository
+# 5. Render will automatically detect this render.yaml file
+# 6. Add your environment variables in the Render dashboard
+# 7. Deploy!
+#
+# ENVIRONMENT VARIABLES REQUIRED (add in Render dashboard):
+# - DISCORD_TOKEN - Your Discord bot token
+# - SUPABASE_URL - Supabase project URL
+# - SUPABASE_KEY - Supabase anon key
+# - SUPABASE_DB_HOST - Database host (e.g., db.xxxxxxxxxx.supabase.co)
+# - SUPABASE_DB_PASSWORD - Database password
+# - SUPABASE_DB_NAME - postgres
+# - SUPABASE_DB_PORT - 5432
+# - SUPABASE_DB_USER - postgres
+# - JWT_SECRET_KEY - Random secret string for JWT
+#
+# KEEPING THE BOT ALIVE (Free Tier):
+# Since Render's free tier spins down after 15 minutes of inactivity:
+# 1. Go to uptimerobot.com
+# 2. Create a free account
+# 3. Add a new monitor:
+#    - Monitor Type: HTTP(s)
+#    - Friendly Name: Blue Deer Trading Bot
+#    - URL: Your Render service URL + /health
+#    - Monitoring Interval: Every 5 minutes (300 seconds)
+# 4. The bot will stay awake!
+
+services:
+  - type: worker
+    name: blue-deer-trading-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/app/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 8000
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: FASTAPI_TEST
+        value: "false"
+    # Note: Add these secrets in Render dashboard:
+    # - DISCORD_TOKEN
+    # - SUPABASE_URL
+    # - SUPABASE_KEY
+    # - SUPABASE_DB_HOST
+    # - SUPABASE_DB_PASSWORD
+    # - SUPABASE_DB_NAME
+    # - SUPABASE_DB_PORT
+    # - SUPABASE_DB_USER
+    # - JWT_SECRET_KEY
