@@ -20,7 +20,6 @@
 # - SUPABASE_DB_NAME - postgres
 # - SUPABASE_DB_PORT - 5432
 # - SUPABASE_DB_USER - postgres
-# - JWT_SECRET_KEY - Random secret string for JWT
 #
 # KEEPING THE BOT ALIVE (Free Tier):
 # Since Render's free tier spins down after 15 minutes of inactivity:
@@ -49,10 +48,6 @@ services:
         value: 0.0.0.0
       - key: API_PORT
         value: 8000
-      - key: JWT_ALGORITHM
-        value: HS256
-      - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 30
       - key: FASTAPI_TEST
         value: "false"
     # Note: Add these secrets in Render dashboard:
