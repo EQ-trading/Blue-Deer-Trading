@@ -63,9 +63,10 @@ def get_engine():
         echo=True  # Enable SQL logging
     )
 
-def get_session_local():
-    engine = get_engine()
-    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_session_local(eng=None):
+    if eng is None:
+        eng = get_engine()
+    return sessionmaker(autocommit=False, autoflush=False, bind=eng)
 
 def get_supabase():
     """Initialize Supabase client with version 2.10.0."""
@@ -83,12 +84,23 @@ def get_supabase():
     
     return create_client(supabase_url, supabase_key, options=options)
 
-engine = get_engine()
-SessionLocal = get_session_local()
+logger = logging.getLogger(__name__)
 
-logging.info(f"Base class created with metadata: {Base.metadata}")
+# Initialize engine at import time, but catch failures so the app can still start.
+# The bot and health endpoint work without the DB; only trade API routes need it.
+try:
+    engine = get_engine()
+    SessionLocal = get_session_local(engine)
+    logger.info(f"Database engine created. Tables: {Base.metadata}")
+except Exception as e:
+    logger.error(f"Failed to create database engine: {e}")
+    logger.error("Trade API endpoints will not work. Bot and health check will still function.")
+    engine = None
+    SessionLocal = None
 
 def get_db():
+    if SessionLocal is None:
+        raise RuntimeError("Database is not configured. Check SUPABASE_DB_* environment variables.")
     db = SessionLocal()
     try:
         yield db

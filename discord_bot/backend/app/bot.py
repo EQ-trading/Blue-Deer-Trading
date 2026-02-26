@@ -86,12 +86,13 @@ def setup_bot():
         print(f"Error loading cogs: {e}")
         raise
 
-# Somehow override the run function, or call this from the run function...
+# Blocking version for standalone use (run_bot.py, local dev).
+# Uses bot.run() which creates its own event loop.
 def run_bot(token=None):
     if token is None:
         if os.getenv("LOCAL_TEST", "false").lower() == "true":
             token = os.getenv('TEST_TOKEN')
-        else:   
+        else:
             token = os.getenv('DISCORD_TOKEN')
 
     if not token:
@@ -103,6 +104,35 @@ def run_bot(token=None):
     except Exception as e:
         logger.error(f"Failed to start the bot: {str(e)}")
         raise
+
+
+# Async version for running inside an existing event loop (FastAPI/uvicorn).
+# Uses bot.start() which is a coroutine and does NOT block the loop.
+async def start_bot(token=None):
+    if token is None:
+        if os.getenv("LOCAL_TEST", "false").lower() == "true":
+            token = os.getenv('TEST_TOKEN')
+        else:
+            token = os.getenv('DISCORD_TOKEN')
+
+    if not token:
+        logger.error("DISCORD_TOKEN environment variable is not set.")
+        raise ValueError("DISCORD_TOKEN environment variable is not set.")
+    try:
+        setup_bot()
+        logger.info("Starting Discord bot (async)...")
+        await bot.start(token)
+    except Exception as e:
+        logger.error(f"Failed to start the bot: {str(e)}")
+        raise
+
+
+async def stop_bot():
+    """Gracefully close the Discord bot connection."""
+    if not bot.is_closed():
+        logger.info("Shutting down Discord bot...")
+        await bot.close()
+        logger.info("Discord bot shut down.")
 
 @bot.event
 async def on_ready():

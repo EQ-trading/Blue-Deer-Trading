@@ -3,7 +3,6 @@ print("Starting application...")
 import asyncio
 import logging
 import os
-import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional, Union
@@ -14,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
-from .bot import run_bot
+from .bot import start_bot, stop_bot
 from .database import get_db, engine, SessionLocal
 from .models import create_tables
 from .schemas import RegularPortfolioTrade, StrategyPortfolioTrade
@@ -33,28 +32,55 @@ logger.addHandler(console_handler)
 # Check if we're in a test environment
 IS_TEST = os.getenv('FASTAPI_TEST') == 'true'
 
-models.Base.metadata.create_all(bind=engine)
+# Table creation moved to lifespan handler where engine availability is checked
+if engine is not None:
+    models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    create_tables(engine)
-    try:
-        asyncio.create_task(run_bot())
-        if not IS_TEST:
-            asyncio.create_task(backup_database())
-    except Exception as e:
-        logger.error(f"Failed to start the bot or backup task: {str(e)}")
+    # Create tables if DB engine is available
+    if engine is not None:
+        create_tables(engine)
+    else:
+        logger.warning("Database engine not available. Skipping table creation.")
+
+    # Start the Discord bot as an async task (non-blocking)
+    bot_task = None
+    if not IS_TEST:
+        try:
+            bot_task = asyncio.create_task(start_bot())
+            logger.info("Discord bot task created.")
+        except Exception as e:
+            logger.error(f"Failed to create bot task: {str(e)}")
+
     yield
-    # Shutdown code here (if any)
+
+    # Graceful shutdown: close the Discord bot connection
+    await stop_bot()
+    if bot_task and not bot_task.done():
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            logger.info("Bot task cancelled.")
 
 app = FastAPI(lifespan=lifespan)
 
 
 
-# Add CORS middleware
+# Build CORS origins from env var or use defaults
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://blue-deer-trading.onrender.com",
+]
+_extra_origins = os.getenv("CORS_ORIGINS", "")
+if _extra_origins:
+    _cors_origins.extend([o.strip() for o in _extra_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Add both localhost variations
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,6 +88,8 @@ app.add_middleware(
 )
 
 def get_db():
+    if SessionLocal is None:
+        raise HTTPException(status_code=503, detail="Database not configured. Check SUPABASE_DB_* env vars.")
     db = SessionLocal()
     try:
         yield db
@@ -192,52 +220,19 @@ def read_performance(db: Session = Depends(get_db)):
 async def read_root():
     return {"Hello": "World"}
 
-# Modify the backup_database function
-async def backup_database():
-    if IS_TEST:
-        return  # Skip backups during tests
-    while True:
-        try:
-            # Get the current date for the backup file name
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            source_db = "/home/dzeller/Blue-Deer-Trading/discord_bot/db/sql_app.db"
-            
-            #backup_dir = os.path.join(current_dir, "../db/backups")
-            #backup_db = os.path.join(backup_dir, f"backup_{current_date}.db")
-            backup_db = f"/home/dzeller/Blue-Deer-Trading/discord_bot/db/backups/backup_{current_date}.db"
-            # Create backup directory if it doesn't exist
-            os.makedirs(os.path.dirname(backup_db), exist_ok=True)
-            
-            # Create a copy of the database file
-            shutil.copy2(source_db, backup_db)
+@app.get("/health")
+async def health_check():
+    from .bot import bot
+    bot_connected = bot.is_ready() if hasattr(bot, 'is_ready') else False
+    return {
+        "status": "ok",
+        "bot_connected": bot_connected,
+        "db_available": engine is not None
+    }
 
-            logger.info(f"Database backup created: {backup_db}")
-            
-            # Clean up old backups
-            cleanup_old_backups(os.path.dirname(backup_db))
-            
-            # Wait for 24 hours before the next backup
-            await asyncio.sleep(24 * 60 * 60)
-        except Exception as e:
-            logger.error(f"Failed to create database backup: {str(e)}")
-            # If there's an error, wait for 1 hour before trying again
-            await asyncio.sleep(60 * 60)
-
-def cleanup_old_backups(backup_dir):
-    try:
-        # Get all backup files
-        backup_files = [f for f in os.listdir(backup_dir) if f.startswith("backup_") and f.endswith(".db")]
-        
-        # Sort backup files by modification time (newest first)
-        backup_files.sort(key=lambda x: os.path.getmtime(os.path.join(backup_dir, x)), reverse=True)
-        
-        # Keep only the last 14 backups
-        for old_backup in backup_files[14:]:
-            os.remove(os.path.join(backup_dir, old_backup))
-            logger.info(f"Removed old backup: {old_backup}")
-    except Exception as e:
-        logger.error(f"Failed to clean up old backups: {str(e)}")
+# NOTE: backup_database removed. The old SQLite backup logic referenced
+# Dylan's VPS paths (/home/dzeller/...) and is not applicable to
+# the Supabase + Render deployment. Supabase handles its own backups.
 
 @app.post("/trades/bto", response_model=schemas.Trade)
 def create_bto_trade(trade: schemas.TradeCreate, db: Session = Depends(get_db)):
